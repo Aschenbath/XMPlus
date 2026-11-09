@@ -11,6 +11,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:path/path.dart' as p;
+import 'package:url_launcher/url_launcher.dart';
+
+import '../services/browser_captcha_session.dart';
 
 /// A new private profile per challenge; never receives application credentials.
 class GeetestDialog extends StatefulWidget {
@@ -55,6 +58,8 @@ class _GeetestDialogState extends State<GeetestDialog> {
   WebViewEnvironment? _environment;
   Directory? _profile;
   Timer? _timeout;
+  BrowserCaptchaSession? _browserSession;
+  bool _browserBusy = false;
   bool _ready = false, _accepting = false, _finished = false;
   String? _error;
   bool _runtimeMissing = false;
@@ -69,6 +74,7 @@ class _GeetestDialogState extends State<GeetestDialog> {
     _finished = true;
     _accepting = false;
     _timeout?.cancel();
+    unawaited(_browserSession?.close());
   }
 
   @override
@@ -152,9 +158,7 @@ class _GeetestDialogState extends State<GeetestDialog> {
 
   @override
   void dispose() {
-    _accepting = false;
-    _finished = true;
-    _timeout?.cancel();
+    _invalidate();
     final environment = _environment, profile = _profile;
     unawaited(() async {
       try {
@@ -292,6 +296,43 @@ class _GeetestDialogState extends State<GeetestDialog> {
     }
   }
 
+  Future<void> _openBrowser() async {
+    if (_browserBusy || _finished) return;
+    _accepting = false;
+    _timeout?.cancel();
+    setState(() {
+      _browserBusy = true;
+      _error = '请在浏览器中完成安全验证，然后回到 XMPlus。';
+    });
+    BrowserCaptchaSession? session;
+    try {
+      session = await BrowserCaptchaSession.start(captchaId: widget.captchaId);
+      if (!mounted || _finished) return;
+      _browserSession = session;
+      final launched = await launchUrl(
+        session.url,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched) throw StateError('Browser unavailable');
+      final result = await session.result;
+      if (!mounted || _finished) return;
+      if (result == null) {
+        setState(() => _error = '浏览器验证已超时，请重试。');
+        return;
+      }
+      _finished = true;
+      Navigator.of(context).pop(result);
+    } catch (_) {
+      if (mounted && !_finished) {
+        setState(() => _error = '无法启动浏览器验证，请检查默认浏览器后重试。');
+      }
+    } finally {
+      await session?.close();
+      if (identical(_browserSession, session)) _browserSession = null;
+      if (mounted && !_finished) setState(() => _browserBusy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => PopScope(
     onPopInvokedWithResult: (didPop, _) {
@@ -310,16 +351,28 @@ class _GeetestDialogState extends State<GeetestDialog> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(_error!),
+                    if (Platform.isWindows) ...[
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: _browserBusy ? null : _openBrowser,
+                        icon: const Icon(Icons.open_in_browser),
+                        label: Text(_browserBusy ? '等待浏览器验证…' : '在浏览器中验证'),
+                      ),
+                      if (_browserBusy) ...[
+                        const SizedBox(height: 12),
+                        const LinearProgressIndicator(),
+                      ],
+                    ],
                     if (Platform.isWindows && _runtimeMissing) ...[
                       const SizedBox(height: 16),
                       TextButton.icon(
-                        onPressed: _openInstaller,
+                        onPressed: _browserBusy ? null : _openInstaller,
                         icon: const Icon(Icons.open_in_new),
                         label: const Text('微软 WebView2 下载页'),
                       ),
                     ],
                     const SizedBox(height: 16),
-                    const Text('关闭此窗口后，仍可选择“导入登录信息”。'),
+                    const Text('关闭此窗口后，仍可选择“Cookie 登录”。'),
                   ],
                 ),
               )

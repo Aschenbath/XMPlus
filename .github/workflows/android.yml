@@ -44,6 +44,8 @@ jobs:
           cache: true
       - name: Resolve locked dependencies
         run: flutter pub get --enforce-lockfile
+      - name: Check browser captcha session lifecycle
+        run: dart tool/check_browser_captcha.dart
       - name: Restore source-built native media executables
         uses: actions/download-artifact@v7
         with:
