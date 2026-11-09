@@ -460,20 +460,23 @@ class DownloadService {
   Future<void> pauseAlbum(String id) async {
     final job = _albums[id]!;
     job.state = 'paused';
-    await _updates.synchronized(() => _save(_tasks));
-    for (final taskId in job.taskIds) {
-      if (task(taskId).active) await pause(taskId);
-    }
+    // Signal every task before waiting: a finished worker may pump the queue.
+    await Future.wait<void>([
+      _updates.synchronized(() => _save(_tasks)),
+      for (final taskId in job.taskIds)
+        if (task(taskId).active) pause(taskId),
+    ]);
     _notify();
   }
 
   Future<void> cancelAlbum(String id) async {
     final job = _albums[id]!;
     job.state = 'cancelled';
-    await _updates.synchronized(() => _save(_tasks));
-    for (final taskId in job.taskIds) {
-      if (task(taskId).state != DownloadState.completed) await cancel(taskId);
-    }
+    await Future.wait<void>([
+      _updates.synchronized(() => _save(_tasks)),
+      for (final taskId in job.taskIds)
+        if (task(taskId).state != DownloadState.completed) cancel(taskId),
+    ]);
     _notify();
   }
 
