@@ -295,6 +295,7 @@ class _HomePageState extends State<HomePage> {
                                   child: ExcludeSemantics(
                                     excluding: !tabsCurrent,
                                     child: Padding(
+                                      key: ValueKey(_tabsPageId),
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 4,
                                       ),
