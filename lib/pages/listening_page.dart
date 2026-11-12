@@ -626,7 +626,34 @@ class _ListeningPageState extends State<ListeningPage>
 
   Widget _empty(String message) => Padding(
     padding: const EdgeInsets.all(28),
-    child: Center(child: Text(message)),
+    child: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _query.isEmpty
+                ? Icons.library_music_outlined
+                : Icons.search_off_rounded,
+            size: 40,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyLarge,
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _itemTitle(String title) => Text(
+    title,
+    maxLines: 2,
+    overflow: TextOverflow.ellipsis,
+    style: Theme.of(context).textTheme.titleMedium
+        ?.copyWith(fontSize: 16, fontWeight: FontWeight.w600, height: 1.4),
   );
 
   Widget _sectionState(int section, VoidCallback refresh) => Column(
@@ -660,7 +687,9 @@ class _ListeningPageState extends State<ListeningPage>
     String note = '',
     VoidCallback? editNote,
   }) {
-    final compact = MediaQuery.sizeOf(context).width < 320;
+    final compact = MediaQuery.sizeOf(context).width < 360;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final epoch = _accountEpoch, key = _currentKey;
     final identity = _runtime.player.libraryIdentity;
     final duration = track.duration;
@@ -670,27 +699,68 @@ class _ListeningPageState extends State<ListeningPage>
     return ListTile(
       contentPadding: EdgeInsets.symmetric(
         horizontal: compact ? 8 : 16,
-        vertical: 6,
+        vertical: 10,
       ),
+      titleAlignment: ListTileTitleAlignment.top,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      hoverColor: colors.primary.withValues(alpha: .045),
+      focusColor: colors.primary.withValues(alpha: .09),
       leading: compact ? null : CoverImage(uri: track.coverUrl, size: 56),
-      title: AdaptiveText(track.title.isEmpty ? track.id : track.title),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (note.isNotEmpty)
-            Text(note, maxLines: 3, overflow: TextOverflow.ellipsis),
-          if (track.album.isNotEmpty) AdaptiveText(track.album),
-          AdaptiveText(
-            position > 0
-                ? '$positionLabel ${playbackTime(position)}${duration > 0 ? ' / ${playbackTime(duration)}' : ''}'
-                : playbackTime(duration),
-          ),
-          if (position > 0 && progress != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: LinearProgressIndicator(value: progress, minHeight: 2),
+      title: _itemTitle(track.title.isEmpty ? track.id : track.title),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (track.album.isNotEmpty) ...[
+              Text(
+                track.album,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.onSurfaceVariant,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 4),
+            ],
+            Text(
+              position > 0
+                  ? '$positionLabel ${playbackTime(position)}${duration > 0 ? ' / ${playbackTime(duration)}' : ''}'
+                  : playbackTime(duration),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.onSurfaceVariant,
+                height: 1.4,
+              ),
             ),
-        ],
+            if (position > 0 && progress != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 3,
+                  borderRadius: BorderRadius.circular(3),
+                  semanticsLabel: positionLabel,
+                ),
+              ),
+            if (note.isNotEmpty)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(top: 10),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  note,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
+                ),
+              ),
+          ],
+        ),
       ),
       onTap: _acting || play == null
           ? null
@@ -783,7 +853,10 @@ class _ListeningPageState extends State<ListeningPage>
                       padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
                       child: AdaptiveText(
                         row,
-                        style: Theme.of(context).textTheme.titleMedium,
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     )
                   : tile(row as T);
@@ -850,7 +923,12 @@ class _ListeningPageState extends State<ListeningPage>
         if (_updates.isNotEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Text('当前 API 返回的最近 ${_updates.length} 条更新'),
+            child: Text(
+              '最近 ${_updates.length} 条更新',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
         _sectionState(0, () => _loadUpdates(reset: true)),
         if (_subscriptions.isEmpty)
@@ -887,11 +965,28 @@ class _ListeningPageState extends State<ListeningPage>
       items,
       (row) => row.updatedAt,
       (row) => ListTile(
-        leading: MediaQuery.sizeOf(context).width < 320
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: MediaQuery.sizeOf(context).width < 360 ? 8 : 16,
+          vertical: 10,
+        ),
+        titleAlignment: ListTileTitleAlignment.top,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        leading: MediaQuery.sizeOf(context).width < 360
             ? null
             : CoverImage(uri: row.album.coverUrl, size: 56),
-        title: AdaptiveText(row.album.title),
-        subtitle: AdaptiveText(row.latestTitle),
+        title: _itemTitle(row.album.title),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            row.latestTitle,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              height: 1.4,
+            ),
+          ),
+        ),
         trailing: PopupMenuButton<String>(
           tooltip: '专辑操作',
           enabled: !_acting,
@@ -1092,8 +1187,74 @@ class _ListeningPageState extends State<ListeningPage>
     );
   }
 
+  Widget _libraryHeader() => LayoutBuilder(
+    builder: (context, constraints) {
+      final title = Text(
+        '我的收听',
+        style: Theme.of(context).textTheme.headlineLarge
+            ?.copyWith(fontSize: 30, fontWeight: FontWeight.w600, height: 1.3),
+      );
+      final search = Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _search,
+              onChanged: (_) => _searchChanged(),
+              decoration: InputDecoration(
+                hintText: '搜索收听内容',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _search.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: '清空搜索',
+                        onPressed: () {
+                          _search.clear();
+                          _searchChanged();
+                        },
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: '刷新收听列表',
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: !_signedIn
+                ? null
+                : () {
+                    _runtime.libraryChanged();
+                    unawaited(_loadHistory());
+                  },
+          ),
+        ],
+      );
+      if (constraints.maxWidth <
+          720 * MediaQuery.textScalerOf(context).scale(14) / 14) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [title, const SizedBox(height: 16), search],
+        );
+      }
+      return Row(
+        children: [
+          Expanded(child: title),
+          const SizedBox(width: 32),
+          SizedBox(
+            width: (constraints.maxWidth * .5).clamp(320.0, 520.0),
+            child: search,
+          ),
+        ],
+      );
+    },
+  );
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tabStyle = theme.textTheme.labelLarge?.copyWith(
+      fontWeight: FontWeight.w500,
+    );
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 960),
@@ -1102,35 +1263,12 @@ class _ListeningPageState extends State<ListeningPage>
             SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(
-                  MediaQuery.sizeOf(context).width < 320 ? 8 : 16,
-                  8,
-                  8,
-                  8,
+                  MediaQuery.sizeOf(context).width < 360 ? 8 : 16,
+                  24,
+                  MediaQuery.sizeOf(context).width < 360 ? 8 : 16,
+                  12,
                 ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _search,
-                        onChanged: (_) => _searchChanged(),
-                        decoration: const InputDecoration(
-                          hintText: '搜索更新、订阅、历史、收藏和书签',
-                          prefixIcon: Icon(Icons.search),
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: '刷新收听列表',
-                      icon: const Icon(Icons.refresh),
-                      onPressed: !_signedIn
-                          ? null
-                          : () {
-                              _runtime.libraryChanged();
-                              unawaited(_loadHistory());
-                            },
-                    ),
-                  ],
-                ),
+                child: _libraryHeader(),
               ),
             ),
             SliverToBoxAdapter(
@@ -1138,6 +1276,19 @@ class _ListeningPageState extends State<ListeningPage>
                 controller: _tabs,
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
+                dividerHeight: 0,
+                labelStyle: tabStyle,
+                unselectedLabelStyle: tabStyle,
+                labelColor: theme.colorScheme.primary,
+                unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
+                indicatorSize: TabBarIndicatorSize.label,
+                indicator: UnderlineTabIndicator(
+                  borderSide: BorderSide(
+                    color: theme.colorScheme.primary,
+                    width: 3,
+                  ),
+                  borderRadius: BorderRadius.circular(3),
+                ),
                 tabs: const [
                   Tab(text: '听更新'),
                   Tab(text: '订阅'),
