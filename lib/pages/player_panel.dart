@@ -8,6 +8,7 @@ import '../api/xmly_client.dart';
 import '../api/xmly_experience.dart';
 import '../common/widgets/adaptive_text.dart';
 import '../common/widgets/app_header.dart';
+import '../common/widgets/app_tab_button.dart';
 import '../common/widgets/confirmation_dialog.dart';
 import '../common/widgets/local_panel.dart';
 import '../models/xmly_models.dart';
@@ -1251,24 +1252,26 @@ class _PlayerPanelState extends State<PlayerPanel> {
           required IconData icon,
           required bool selected,
           required VoidCallback? onPressed,
-        }) => Semantics(
-          selected: selected,
-          child: TextButton.icon(
-            key: ValueKey(key),
-            onPressed: tabs && selected ? () {} : onPressed,
-            style: TextButton.styleFrom(
-              foregroundColor: tabs && !selected
-                  ? colors.onSurfaceVariant
-                  : null,
-              backgroundColor: tabs && selected
-                  ? colors.surfaceContainerHighest
-                  : Colors.transparent,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            ),
-            icon: Icon(icon, size: 18),
-            label: Text(label),
-          ),
-        );
+        }) => tabs
+            ? AppTabButton(
+                key: ValueKey(key),
+                label: label,
+                icon: icon,
+                selected: selected,
+                onPressed: selected ? () {} : onPressed,
+              )
+            : TextButton.icon(
+                key: ValueKey(key),
+                onPressed: onPressed,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                ),
+                icon: Icon(icon, size: 18),
+                label: Text(label),
+              );
         return Wrap(
           alignment: WrapAlignment.center,
           spacing: tabs ? 4 : 12,
