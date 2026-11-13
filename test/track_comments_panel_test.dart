@@ -28,6 +28,7 @@ class _CommentsClient extends XmlyClient {
 
   final List<Map<String, dynamic>> rows;
   final pages = <int>[];
+  final deletes = <String>[];
   final creates = <Completer<Map<String, dynamic>>>[];
   final replies = [
     {
@@ -49,6 +50,7 @@ class _CommentsClient extends XmlyClient {
   ];
   int replyReads = 0;
   Completer<void>? likeGate;
+  Completer<void>? pageGate;
 
   @override
   Future<Map<String, dynamic>> request(
@@ -78,6 +80,12 @@ class _CommentsClient extends XmlyClient {
       row['liked'] = liked;
       return {'ret': 0};
     }
+    if (path.startsWith('/mobile/comment/delete/')) {
+      final id = data!['commentId'] as String;
+      deletes.add(id);
+      rows.removeWhere((row) => row['id'] == id);
+      return {'ret': 0};
+    }
     if (path == '/revision/comment/queryReplies') {
       replyReads++;
       return {
@@ -92,14 +100,20 @@ class _CommentsClient extends XmlyClient {
     if (path.startsWith('/comment-mobile/v1/track/comment/')) {
       final page = query!['pageId'] as int;
       pages.add(page);
-      return {
+      final response = {
         'comment': {
           'pageId': page,
           'totalCount': rows.length,
           'maxPageId': (rows.length / 20).ceil(),
-          'list': rows.skip((page - 1) * 20).take(20).toList(),
+          'list': rows
+              .skip((page - 1) * 20)
+              .take(20)
+              .map((row) => Map<String, dynamic>.of(row))
+              .toList(),
         },
       };
+      await pageGate?.future;
+      return response;
     }
     throw StateError('Unexpected request: $method $path');
   }
@@ -155,8 +169,9 @@ Future<_CommentsRuntime> _mount(
       for (final create in client.creates) {
         if (!create.isCompleted) create.complete({'ret': 0});
       }
-      final gate = client.likeGate;
-      if (gate != null && !gate.isCompleted) gate.complete();
+      for (final gate in [client.likeGate, client.pageGate]) {
+        if (gate != null && !gate.isCompleted) gate.complete();
+      }
       client.close();
     }
     await tester.pump();
@@ -291,6 +306,119 @@ void main() {
       );
     },
   );
+
+  for (final alreadyLiked in [false, true]) {
+    testWidgets(
+      'a delayed refresh preserves a completed like (snapshot liked: $alreadyLiked)',
+      (tester) async {
+        final client = _CommentsClient(count: 1);
+        await _mount(tester, [client]);
+        client.rows.first
+          ..['content'] = 'Updated comment'
+          ..['likes'] = 10
+          ..['liked'] = alreadyLiked;
+        client.pageGate = Completer<void>();
+        await tester.tap(find.byTooltip('刷新评论'));
+        await tester.pump();
+        expect(client.pages, [1, 1]);
+        await tester.tap(_like(_row('1')));
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.descendant(of: _row('1'), matching: find.byIcon(Icons.thumb_up)),
+          findsOneWidget,
+        );
+        client.pageGate!.complete();
+        await tester.pumpAndSettle();
+        expect(client.pages, [1, 1]);
+        expect(find.text('Updated comment'), findsOneWidget);
+        expect(
+          find.descendant(of: _row('1'), matching: find.byIcon(Icons.thumb_up)),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: _row('1'),
+            matching: find.text(alreadyLiked ? '10' : '11'),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+  }
+
+  for (final fails in [false, true]) {
+    testWidgets(
+      'switching accounts detaches an old like that ${fails ? 'fails' : 'succeeds'}',
+      (tester) async {
+        final first = _CommentsClient(count: 1)..likeGate = Completer<void>();
+        final second = _CommentsClient(uid: '2', count: 1)
+          ..likeGate = Completer<void>();
+        final runtime = await _mount(tester, [first, second]);
+        await tester.tap(_like(_row('1')));
+        await tester.pump();
+        runtime.useClient(second);
+        await tester.pump();
+        await tester.pump();
+        expect(_like(_row('1')), findsOneWidget);
+        await tester.tap(_like(_row('1')));
+        await tester.pump();
+        if (fails) {
+          first.likeGate!.completeError(
+            const XmlyException('rate_limited', 'Earlier like failed'),
+          );
+        } else {
+          first.likeGate!.complete();
+        }
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('Earlier like failed'), findsNothing);
+        expect(
+          find.descendant(
+            of: _row('1'),
+            matching: find.byType(CircularProgressIndicator),
+          ),
+          findsOneWidget,
+        );
+        second.likeGate!.complete();
+        await tester.pumpAndSettle();
+        expect(
+          find.descendant(of: _row('1'), matching: find.byIcon(Icons.thumb_up)),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: _row('1'), matching: find.text('1')),
+          findsOneWidget,
+        );
+      },
+    );
+  }
+
+  testWidgets('a deletion confirmation expires after switching away and back', (
+    tester,
+  ) async {
+    final first = _CommentsClient(count: 1);
+    first.rows.first['uid'] = '1';
+    final second = _CommentsClient(uid: '2', count: 1);
+    final runtime = await _mount(tester, [first, second]);
+    await tester.tap(
+      find.descendant(
+        of: _row('1'),
+        matching: find.widgetWithText(TextButton, '删除'),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('删除评论？'), findsOneWidget);
+    runtime.useClient(second);
+    runtime.useClient(first);
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '删除'));
+    await tester.pumpAndSettle();
+    expect(first.deletes, isEmpty);
+    expect(find.text('Comment 1'), findsOneWidget);
+  });
 
   testWidgets(
     'an old account send cannot lock or finish a newer account send',
