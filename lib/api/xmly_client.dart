@@ -152,7 +152,7 @@ class XmlyClient {
 
   static bool _playpageEndpoint(String method, String origin, String path) {
     AppLog.instance.trace(
-      "lib/api/xmly_client.dart::XmlyClient._playpageEndpoint",
+      'lib/api/xmly_client.dart::XmlyClient._playpageEndpoint',
     );
     return method == 'GET' &&
         origin == mobile &&
