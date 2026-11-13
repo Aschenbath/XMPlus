@@ -728,7 +728,8 @@ class _CommentContentState extends State<_CommentContent> {
                 style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
               ),
               if (widget.action != null || own)
-                Row(
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     if (widget.action != null) widget.action!,
                     if (own)
@@ -989,7 +990,7 @@ class _CommentFeed extends ChangeNotifier {
   List<TrackComment> comments = [];
   int page = 0, total = 0, _request = 0;
   bool busy = false, hasMore = false, retryReset = true, _disposed = false;
-  bool _resetPending = false;
+  Completer<void>? _pendingRefresh;
   String? error;
 
   Future<void> load({bool reset = false}) {
@@ -1004,7 +1005,9 @@ class _CommentFeed extends ChangeNotifier {
 
       if (_disposed || (!reset && page >= 250)) return;
       if (busy) {
-        _resetPending = _resetPending || reset;
+        if (reset) {
+          await (_pendingRefresh ??= Completer<void>()).future;
+        }
         return;
       }
       final request = ++_request;
@@ -1046,10 +1049,16 @@ class _CommentFeed extends ChangeNotifier {
       } finally {
         if (!_disposed && request == _request) {
           busy = false;
-          notifyListeners();
-          if (_resetPending) {
-            _resetPending = false;
-            unawaited(load(reset: true));
+          final pending = _pendingRefresh;
+          _pendingRefresh = null;
+          if (pending == null) {
+            notifyListeners();
+          } else {
+            try {
+              await load(reset: true);
+            } finally {
+              pending.complete();
+            }
           }
         }
       }
@@ -1064,6 +1073,8 @@ class _CommentFeed extends ChangeNotifier {
 
     _disposed = true;
     _request++;
+    _pendingRefresh?.complete();
+    _pendingRefresh = null;
     super.dispose();
   }
 }
